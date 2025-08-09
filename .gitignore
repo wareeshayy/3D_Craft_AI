@@ -1,10 +1,9 @@
 ﻿node_modules/
 .env
-__pycache__/
-*.pyc
-.DS_Store
-dist/
-build/
-venv/
-.vscode/
-*.log
+.env.example
+frontend/.env
+frontend/.env.example
+backend/.env
+backend/.env.example
+node_modules/
+.env
