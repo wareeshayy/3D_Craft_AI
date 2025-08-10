@@ -5,5 +5,3 @@ frontend/.env
 frontend/.env.example
 backend/.env
 backend/.env.example
-node_modules/
-.env
