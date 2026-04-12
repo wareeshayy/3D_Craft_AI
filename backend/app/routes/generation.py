@@ -1,19 +1,57 @@
-﻿from fastapi import APIRouter, File, UploadFile, Form, BackgroundTasks, HTTPException
-from typing import Optional
+from fastapi import APIRouter, File, UploadFile, Form, BackgroundTasks, HTTPException
+from fastapi.responses import JSONResponse
+from typing import Optional, Dict, Any, List
 import uuid
 import logging
 import asyncio
 import os
 from pathlib import Path
 import json
-import struct
-import array
+import base64
+import time
+from pydantic import BaseModel
+
+# Import services
+try:
+    from app.services.ai_service import HuggingFaceAIService
+    ai_service = HuggingFaceAIService()
+except ImportError:
+    ai_service = None
+    logging.warning("AI service not available")
+
+try:
+    from app.services.mesh_service import mesh_service
+except ImportError:
+    mesh_service = None
+    logging.warning("Mesh service not available")
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-# Import job storage from jobs router
-from .jobs import job_storage, create_job, update_job_status
+# Simple job storage (in-memory for now)
+job_storage = {}
+
+def create_job(job_id: str, prompt: str, style: str, quality: str, additional_data: dict = None):
+    """Create a new job entry"""
+    job_storage[job_id] = {
+        "id": job_id,
+        "prompt": prompt,
+        "style": style,
+        "quality": quality,
+        "status": "pending",
+        "progress": 0,
+        "created_at": time.time(),
+        "additional_data": additional_data or {}
+    }
+
+def update_job_status(job_id: str, status: str, progress: int = None, result: dict = None):
+    """Update job status"""
+    if job_id in job_storage:
+        job_storage[job_id]["status"] = status
+        if progress is not None:
+            job_storage[job_id]["progress"] = progress
+        if result:
+            job_storage[job_id]["result"] = result
 
 @router.post("/text-to-3d")
 async def generate_3d_model(
@@ -739,3 +777,259 @@ async def process_variation_generation(
     except Exception as e:
         logger.error(f"❌ Variation generation failed for job {job_id}: {e}")
         update_job_status(job_id, "failed", 0, error_message=str(e))
+        
+        
+        
+
+
+# Router already defined above
+
+class TextTo3DRequest(BaseModel):
+    prompt: str
+    enhance_prompt: bool = True
+    parameters: Optional[Dict[str, Any]] = None
+
+class ImageTo3DRequest(BaseModel):
+    image_data: str  # base64 encoded
+    description: Optional[str] = None
+    parameters: Optional[Dict[str, Any]] = None
+
+class TextureGenerationRequest(BaseModel):
+    description: str
+    size: tuple = (512, 512)
+    parameters: Optional[Dict[str, Any]] = None
+
+@router.post("/text-to-3d")
+async def generate_3d_from_text(request: TextTo3DRequest):
+    """Generate 3D model from text with enhanced prompting"""
+    try:
+        result = await ai_service.enhanced_text_to_3d_generation(
+            prompt=request.prompt,
+            enhance_prompt=request.enhance_prompt
+        )
+        
+        if result["status"] == "success":
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "message": "3D model generated successfully",
+                    "data": result
+                }
+            )
+        else:
+            raise HTTPException(status_code=500, detail=result.get("message", "Generation failed"))
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Text-to-3D generation failed: {str(e)}")
+
+@router.post("/image-to-3d")
+async def generate_3d_from_image(request: ImageTo3DRequest):
+    """Convert 2D image to 3D model"""
+    try:
+        # Decode base64 image
+        image_bytes = base64.b64decode(request.image_data)
+        
+        result = await ai_service.image_to_3d_with_enhancement(
+            image_data=image_bytes,
+            description=request.description
+        )
+        
+        if result["status"] == "success":
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "message": "3D model generated from image successfully",
+                    "data": result
+                }
+            )
+        else:
+            raise HTTPException(status_code=500, detail=result.get("message", "Generation failed"))
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Image-to-3D conversion failed: {str(e)}")
+
+@router.post("/image-to-3d/upload")
+async def upload_image_to_3d(
+    file: UploadFile = File(...),
+    description: Optional[str] = Form(None)
+):
+    """Upload image file and convert to 3D"""
+    try:
+        if not file.content_type.startswith('image/'):
+            raise HTTPException(status_code=400, detail="File must be an image")
+        
+        # Read image data
+        image_data = await file.read()
+        
+        result = await ai_service.image_to_3d_with_enhancement(
+            image_data=image_data,
+            description=description
+        )
+        
+        if result["status"] == "success":
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "message": "3D model generated from uploaded image successfully",
+                    "filename": file.filename,
+                    "data": result
+                }
+            )
+        else:
+            raise HTTPException(status_code=500, detail=result.get("message", "Generation failed"))
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload and conversion failed: {str(e)}")
+
+@router.post("/generate-texture")
+async def generate_texture(request: TextureGenerationRequest):
+    """Generate texture from description"""
+    try:
+        result = await ai_service.hf_service.generate_texture(
+            description=request.description,
+            size=request.size
+        )
+        
+        if result["status"] == "success":
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "message": "Texture generated successfully",
+                    "data": result
+                }
+            )
+        else:
+            raise HTTPException(status_code=500, detail=result.get("message", "Texture generation failed"))
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Texture generation failed: {str(e)}")
+
+@router.post("/generate-reference-image")
+async def generate_reference_image(prompt: str):
+    """Generate reference image for 3D modeling"""
+    try:
+        result = await ai_service.hf_service.generate_reference_image(prompt)
+        
+        if result["status"] == "success":
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "message": "Reference image generated successfully",
+                    "data": result
+                }
+            )
+        else:
+            raise HTTPException(status_code=500, detail=result.get("message", "Reference image generation failed"))
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Reference image generation failed: {str(e)}")
+
+@router.post("/enhance-prompt")
+async def enhance_prompt(prompt: str, max_length: int = 150):
+    """Enhance text prompt for better 3D generation"""
+    try:
+        result = await ai_service.hf_service.generate_text_description(prompt, max_length)
+        
+        if result["status"] == "success":
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "message": "Prompt enhanced successfully",
+                    "data": result
+                }
+            )
+        else:
+            raise HTTPException(status_code=500, detail=result.get("message", "Prompt enhancement failed"))
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Prompt enhancement failed: {str(e)}")
+
+@router.post("/generate-complete-asset")
+async def generate_complete_3d_asset(prompt: str):
+    """Generate complete 3D asset package (model + textures + reference)"""
+    try:
+        result = await ai_service.generate_3d_asset_package(prompt)
+        
+        if result["status"] == "success":
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "message": "Complete 3D asset package generated successfully",
+                    "data": result
+                }
+            )
+        else:
+            raise HTTPException(status_code=500, detail=result.get("message", "Asset package generation failed"))
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Complete asset generation failed: {str(e)}")
+
+@router.get("/status")
+async def get_generation_status():
+    """Get status of all generation services"""
+    try:
+        status = ai_service.get_generation_status()
+        return JSONResponse(
+            status_code=200,
+            content={
+                "message": "Generation services status",
+                "data": status
+            }
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Status check failed: {str(e)}")
+
+# ==================== CHATBOT ROUTES ====================
+
+class ChatRequest(BaseModel):
+    message: str
+    conversation_history: Optional[List[Dict[str, str]]] = None
+
+class ChatResponse(BaseModel):
+    response: str
+    model: str
+    timestamp: float
+
+@router.post("/chat", response_model=ChatResponse)
+async def chat_with_ai(request: ChatRequest):
+    """Chat with AI assistant about 3D generation"""
+    try:
+        result = await ai_service.chat_with_bot(
+            user_message=request.message,
+            conversation_history=request.conversation_history
+        )
+        
+        if result["status"] == "success":
+            return ChatResponse(
+                response=result["response"],
+                model=result.get("model", "unknown"),
+                timestamp=result["timestamp"]
+            )
+        else:
+            raise HTTPException(status_code=500, detail=result.get("message", "Chat failed"))
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Chat failed: {str(e)}")
+
+@router.get("/help/{topic}")
+async def get_3d_help(topic: str):
+    """Get help about specific 3D generation topics"""
+    try:
+        result = await ai_service.get_3d_generation_help(topic)
+        
+        if result["status"] == "success":
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "topic": result["topic"],
+                    "content": result["content"],
+                    "timestamp": result["timestamp"]
+                }
+            )
+        else:
+            raise HTTPException(status_code=500, detail=result.get("message", "Help failed"))
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Help request failed: {str(e)}")        

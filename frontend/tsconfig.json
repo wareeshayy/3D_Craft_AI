@@ -21,6 +21,7 @@
     "jsx": "react-jsx"
   },
   "include": [
-    "src"
-, "js/3dModelService.js"  ]
+  "src",
+  "./js/3dModelService.js"  // Added ./ to make path explicit
+]
 }

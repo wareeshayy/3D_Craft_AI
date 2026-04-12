@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import logging
 import os
 from pathlib import Path
+from app.core.config import Config
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -115,6 +116,14 @@ async def not_found_handler(request, exc):
 async def internal_error_handler(request, exc):
     logger.error(f"Internal server error: {exc}")
     return {"error": "Internal server error", "status": 500}
+
+@app.get("/debug/services")
+async def debug_services():
+    try:
+        from app.services.mesh_service import mesh_service
+        return {"mesh_service": "imported successfully"}
+    except ImportError as e:
+        return {"error": f"Import failed: {e}"}
 
 if __name__ == "__main__":
     import uvicorn

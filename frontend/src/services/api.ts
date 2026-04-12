@@ -1,4 +1,14 @@
 import axios from 'axios';
+// src/services/api.ts
+import { 
+  TextTo3DRequest, 
+  ImageTo3DRequest, 
+  TextureRequest, 
+  APIResponse, 
+  MeshParameters, 
+  GenerationResult,
+  CompleteAssetResult 
+} from '../types/api';
 
 // Fixed API base URL to match your backend
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000/api/v1';
@@ -268,3 +278,207 @@ export type {
   PresetsResponse,
   PresetPromptsResponse
 };
+
+
+
+class APIService {
+  private baseURL: string;
+  private endpoints: Record<string, string>;
+
+  constructor(baseURL: string = process.env.REACT_APP_API_URL || 'http://localhost:8000') {
+    this.baseURL = baseURL;
+    this.endpoints = {
+      textTo3D: '/api/generation/text-to-3d',
+      imageTo3D: '/api/generation/image-to-3d',
+      uploadImageTo3D: '/api/generation/image-to-3d/upload',
+      generateTexture: '/api/generation/generate-texture',
+      generateReference: '/api/generation/generate-reference-image',
+      enhancePrompt: '/api/generation/enhance-prompt',
+      completeAsset: '/api/generation/generate-complete-asset',
+      status: '/api/generation/status'
+    };
+  }
+
+  private async makeRequest<T>(endpoint: string, options: RequestInit = {}): Promise<APIResponse<T>> {
+    const url = `${this.baseURL}${endpoint}`;
+    const defaultOptions: RequestInit = {
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    };
+
+    const requestOptions = { ...defaultOptions, ...options };
+
+    try {
+      const response = await fetch(url, requestOptions);
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error(`API Request failed for ${endpoint}:`, error);
+      throw error;
+    }
+  }
+
+  // 1. Text-to-3D Generation
+  async generateTextTo3D(request: TextTo3DRequest): Promise<APIResponse<GenerationResult>> {
+    return this.makeRequest<GenerationResult>(this.endpoints.textTo3D, {
+      method: 'POST',
+      body: JSON.stringify(request)
+    });
+  }
+
+  // 2. Image-to-3D Conversion (File Upload)
+  async uploadImageTo3D(file: File, description?: string): Promise<APIResponse<GenerationResult>> {
+    // Validate file
+    this.validateImageFile(file);
+
+    const formData = new FormData();
+    formData.append('file', file);
+    if (description) {
+      formData.append('description', description);
+    }
+
+    return this.makeRequest<GenerationResult>(this.endpoints.uploadImageTo3D, {
+      method: 'POST',
+      body: formData,
+      headers: {} // Remove Content-Type for FormData
+    });
+  }
+
+  // 3. Image-to-3D Conversion (Base64)
+  async generateImageTo3D(request: ImageTo3DRequest): Promise<APIResponse<GenerationResult>> {
+    return this.makeRequest<GenerationResult>(this.endpoints.imageTo3D, {
+      method: 'POST',
+      body: JSON.stringify(request)
+    });
+  }
+
+  // 4. Generate Texture
+  async generateTexture(request: TextureRequest): Promise<APIResponse<GenerationResult>> {
+    return this.makeRequest<GenerationResult>(this.endpoints.generateTexture, {
+      method: 'POST',
+      body: JSON.stringify(request)
+    });
+  }
+
+  // 5. Generate Reference Image
+  async generateReferenceImage(prompt: string): Promise<APIResponse<GenerationResult>> {
+    const encodedPrompt = encodeURIComponent(prompt);
+    return this.makeRequest<GenerationResult>(`${this.endpoints.generateReference}?prompt=${encodedPrompt}`, {
+      method: 'POST'
+    });
+  }
+
+  // 6. Enhance Prompt
+  async enhancePrompt(prompt: string, maxLength: number = 150): Promise<APIResponse<{ original_prompt: string; enhanced_prompt: string }>> {
+    const encodedPrompt = encodeURIComponent(prompt);
+    return this.makeRequest(`${this.endpoints.enhancePrompt}?prompt=${encodedPrompt}&max_length=${maxLength}`, {
+      method: 'POST'
+    });
+  }
+
+  // 7. Generate Complete 3D Asset Package
+  async generateCompleteAsset(prompt: string): Promise<APIResponse<CompleteAssetResult>> {
+    const encodedPrompt = encodeURIComponent(prompt);
+    return this.makeRequest<CompleteAssetResult>(`${this.endpoints.completeAsset}?prompt=${encodedPrompt}`, {
+      method: 'POST'
+    });
+  }
+
+  // 8. Check Service Status
+  async getStatus(): Promise<APIResponse<{ huggingface: any; timestamp: number }>> {
+    return this.makeRequest(this.endpoints.status, {
+      method: 'GET'
+    });
+  }
+
+  // Utility methods
+  async convertFileToBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        const base64 = result.split(',')[1]; // Remove data:image/...;base64, prefix
+        resolve(base64);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  validateImageFile(file: File): void {
+    const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    const maxSize = 10 * 1024 * 1024; // 10MB
+
+    if (!validTypes.includes(file.type)) {
+      throw new Error('Invalid file type. Please upload JPEG, PNG, GIF, or WebP images.');
+    }
+
+    if (file.size > maxSize) {
+      throw new Error('File too large. Please upload images smaller than 10MB.');
+    }
+  }
+
+  // Helper method to download generated content
+  downloadResult(result: GenerationResult, filename: string = 'generated_3d_asset'): void {
+    try {
+      let downloadData: string;
+      let mimeType: string;
+      let extension: string;
+
+      if (result.image_data || result.texture_data) {
+        // Download image/texture
+        downloadData = result.image_data || result.texture_data || '';
+        mimeType = 'image/png';
+        extension = 'png';
+      } else if (result.model_data) {
+        // Download 3D model data as JSON
+        downloadData = JSON.stringify(result.model_data, null, 2);
+        mimeType = 'application/json';
+        extension = 'json';
+      } else {
+        // Download all result data
+        downloadData = JSON.stringify(result, null, 2);
+        mimeType = 'application/json';
+        extension = 'json';
+      }
+
+      const blob = result.image_data || result.texture_data 
+        ? this.base64ToBlob(downloadData, mimeType)
+        : new Blob([downloadData], { type: mimeType });
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${filename}.${extension}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Download failed:', error);
+      alert('Download failed. Please try again.');
+    }
+  }
+
+  private base64ToBlob(base64: string, mimeType: string): Blob {
+    const byteCharacters = atob(base64);
+    const byteNumbers = new Array(byteCharacters.length);
+    
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    
+    const byteArray = new Uint8Array(byteNumbers);
+    return new Blob([byteArray], { type: mimeType });
+  }
+}
+
+// Create singleton instance
+const apiService = new APIService();
+export default apiService;

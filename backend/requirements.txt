@@ -55,3 +55,22 @@ cloudinary==1.37.0
 
 # CORS support for FastAPI
 fastapi-cors==0.0.6
+
+# Add these to your existing requirements.txt
+
+# HuggingFace Integration
+huggingface-hub>=0.16.4
+transformers>=4.30.0
+torch>=2.0.0
+torchvision>=0.15.0
+diffusers>=0.18.0
+
+# Image Processing
+Pillow>=10.0.0
+
+# Async HTTP Client
+aiohttp>=3.8.4
+
+# Optional: For local model inference
+# accelerate>=0.20.0
+# xformers>=0.0.20

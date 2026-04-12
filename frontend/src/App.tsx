@@ -1346,7 +1346,9 @@ const App = () => {
               <button onClick={() => {/* Add cookies */}} className="text-white/60 hover:text-white transition-colors text-sm">Cookie Policy</button>
             </div>
           </div>
+          
         </div>
+        
       </footer>
     </div>
   );

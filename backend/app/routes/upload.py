@@ -9,14 +9,14 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 @router.post("/upload/model")
-async def upload_model(model_file: UploadFile = File(...)):
+async def upload_model(upload_file: UploadFile = File(...)):
     """Upload a 3D model file (GLB/GLTF)"""
     try:
         # Validate file type
-        if not model_file.filename:
+        if not upload_file.filename:
             raise HTTPException(status_code=400, detail="No filename provided")
         
-        file_extension = model_file.filename.lower().split('.')[-1]
+        file_extension = upload_file.filename.lower().split('.')[-1]
         if file_extension not in ['glb', 'gltf']:
             raise HTTPException(
                 status_code=400, 
@@ -29,16 +29,16 @@ async def upload_model(model_file: UploadFile = File(...)):
         upload_dir.mkdir(parents=True, exist_ok=True)
         
         # Save uploaded file
-        file_path = upload_dir / model_file.filename
+        file_path = upload_dir / upload_file.filename
         
         with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(model_file.file, buffer)
+            shutil.copyfileobj(upload_file.file, buffer)
         
-        logger.info(f"📤 Model uploaded successfully: {model_file.filename} -> {model_id}")
+        logger.info(f"📤 Model uploaded successfully: {upload_file.filename} -> {model_id}")
         
         return {
             "modelId": model_id,
-            "filename": model_file.filename,
+            "filename": upload_file.filename,
             "previewUrl": f"/api/models/{model_id}/preview",
             "downloadUrl": f"/api/models/{model_id}/download",
             "message": "Model uploaded successfully"
@@ -101,17 +101,17 @@ async def download_uploaded_model(model_id: str):
             raise HTTPException(status_code=404, detail="Model not found")
         
         # Find the model file in the directory
-        model_files = list(upload_dir.glob("*.glb")) + list(upload_dir.glob("*.gltf"))
-        if not model_files:
+        upload_files = list(upload_dir.glob("*.glb")) + list(upload_dir.glob("*.gltf"))
+        if not upload_files:
             raise HTTPException(status_code=404, detail="Model file not found")
         
-        model_file = model_files[0]
+        upload_file = upload_files[0]
         
         from fastapi.responses import FileResponse
         return FileResponse(
-            path=str(model_file),
-            filename=model_file.name,
-            media_type="model/gltf-binary" if model_file.suffix == ".glb" else "model/gltf+json"
+            path=str(upload_file),
+            filename=upload_file.name,
+            media_type="model/gltf-binary" if upload_file.suffix == ".glb" else "model/gltf+json"
         )
         
     except Exception as e:
