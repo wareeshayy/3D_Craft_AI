@@ -193,10 +193,12 @@ const FloatingParticles = () => {
 
     window.addEventListener('resize', handleResize);
 
+    const currentMount = mountRef.current;
+    
     return () => {
       window.removeEventListener('resize', handleResize);
-      if (mountRef.current && mountRef.current.contains(renderer.domElement)) {
-        mountRef.current.removeChild(renderer.domElement);
+      if (currentMount && currentMount.contains(renderer.domElement)) {
+        currentMount.removeChild(renderer.domElement);
       }
     };
   }, []);
@@ -330,7 +332,7 @@ const ThreeDPreview = ({
   useEffect(() => {
     if (!sceneRef.current) return;
     
-    const { scene, models } = sceneRef.current;
+    const { models } = sceneRef.current;
     
     // Clear existing models
     while (models.children.length > 0) {
@@ -559,6 +561,7 @@ const App = () => {
     };
     
     loadPresets();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Poll job status when generating
@@ -588,6 +591,7 @@ const App = () => {
     }, 1000);
 
     return () => clearInterval(pollInterval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentJob]);
 
   // Enhanced generation function with real API integration
