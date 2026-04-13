@@ -962,11 +962,11 @@ const ThreeDGenerator: React.FC = () => {
             </div>
 
             {/* 3D Model Viewer */}
-            {result.model_url && (
+            {(result as any).model_url && (
               <div>
                 <span className="font-medium mb-2 block">3D Model Preview:</span>
                 <SimpleModelViewer 
-                  modelUrl={result.model_url}
+                  modelUrl={(result as any).model_url}
                   className="border rounded-lg"
                 />
               </div>

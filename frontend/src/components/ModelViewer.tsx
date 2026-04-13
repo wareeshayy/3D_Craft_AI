@@ -99,7 +99,7 @@ const ModelViewer: React.FC<ModelViewerProps> = ({ modelUrl, modelData, classNam
     if (!scene) return;
 
     try {
-      let gltfData;
+      let gltfData: any;
       
       if (data) {
         // Load from ArrayBuffer
