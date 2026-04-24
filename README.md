@@ -6,7 +6,7 @@
 - Node.js (latest LTS)
 - Python 3.8+
 - Git
-
+# Live Link https://aquamarine-3dcradtai.netlify.app/
 ### Quick Start
 
 1. **Frontend Setup:**
